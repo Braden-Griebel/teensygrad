@@ -1,0 +1,19 @@
+[project]
+name = "teensygrad"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+teensygrad = "teensygrad:main"
+
+[tool.maturin]
+module-name = "teensygrad._core"
+python-packages = ["teensygrad"]
+python-source = "src"
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
