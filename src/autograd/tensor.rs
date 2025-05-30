@@ -30,9 +30,13 @@ impl InnerTensor{
     }
 }
 
+/// An enum to describe the possible predecessors of a Tensor
 enum TensorPredecessor {
+    /// If the Tensor has no predecessors (i.e. was directly created rather than from a calculation)
     None,
+    /// If the Tensor was created by a unary operation
     One(Arc<RefCell<InnerTensor>>),
+    /// If the Tensor was created by a Binary Operation
     Two{
         left: Arc<RefCell<InnerTensor>>,
         right: Arc<RefCell<InnerTensor>>,
