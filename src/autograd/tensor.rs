@@ -1,14 +1,14 @@
 // Standard Library Use statements
 use std::cell::RefCell;
-use std::sync::Arc;
+use std::rc::Rc;
 
 // External Crate Uses
-use nalgebra::DMatrix;
+use ndarray::{ArrayD, Axis};
 
 /// A wrapped tensor, which will track computations
 /// enabling automatic differentiation
 pub struct Tensor {
-    inner: Arc<RefCell<InnerTensor>>,
+    inner: Rc<RefCell<InnerTensor>>,
 }
 
 /// Internal Tensor
@@ -16,9 +16,9 @@ struct InnerTensor {
     /// The operation which created the Tensor
     op: Operation,
     /// The value contained in the Tensor
-    value: DMatrix<f64>,
+    value: ArrayD<f64>,
     /// The gradient of the Tensor
-    grad: DMatrix<f64>,
+    grad: ArrayD<f64>,
     /// The predecessors of the Tensor (Tensors involved in the calculation creating this tensor)
     predecessors: TensorPredecessor,
 }
@@ -35,11 +35,11 @@ enum TensorPredecessor {
     /// If the Tensor has no predecessors (i.e. was directly created rather than from a calculation)
     None,
     /// If the Tensor was created by a unary operation
-    One(Arc<RefCell<InnerTensor>>),
+    One(Rc<RefCell<InnerTensor>>),
     /// If the Tensor was created by a Binary Operation
     Two{
-        left: Arc<RefCell<InnerTensor>>,
-        right: Arc<RefCell<InnerTensor>>,
+        left: Rc<RefCell<InnerTensor>>,
+        right: Rc<RefCell<InnerTensor>>,
     }
 }
 
@@ -50,10 +50,4 @@ enum Operation {
     Sum(Axis),
     Pow(f64),
     MatMul,
-}
-
-/// Axis along which an operation was performed
-enum Axis {
-    Row,
-    Col,
 }
