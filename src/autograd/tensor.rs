@@ -46,8 +46,13 @@ enum TensorPredecessor {
 /// Enum describing the operation that created a tensor
 enum Operation {
     Add,
+    Concat {axis: Axis, size: isize},
+    Conv2D {pad: Option<f64>, stride: isize}, 
+    Cosh, 
+    Mult,
+    MatMult,
+    Pow(f64),
+    Split {axis: Axis, size: isize},
     Sub,
     Sum(Axis),
-    Pow(f64),
-    MatMul,
 }
