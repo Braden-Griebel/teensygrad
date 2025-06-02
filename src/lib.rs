@@ -1,7 +1,10 @@
 use pyo3::prelude::*;
 
 // Submodules
+#[allow(dead_code)]
 pub mod autograd;
+#[allow(dead_code)]
+pub mod neuralnet;
 
 #[pyfunction]
 fn hello_from_bin() -> String {

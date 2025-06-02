@@ -16,3 +16,4 @@ ndarray-rand = "0.15.0"
 # "abi3-py39" tells pyo3 (and maturin) to build using the stable ABI with minimum Python version 3.9
 pyo3 = { version = "0.22.4", features = ["extension-module", "abi3-py39", "anyhow"] }
 rust-numpy = "0.1.0"
+thiserror = "2.0.12"
