@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 // External Crate Uses
 use anyhow::{Context, Result};
-use ndarray::{ArrayD, Axis, Zip};
+use ndarray::{ArrayD, Axis};
 use ndarray_rand::rand_distr::{Distribution, Normal, Uniform};
 use ndarray_rand::RandomExt;
 use thiserror;
@@ -407,8 +407,15 @@ impl InnerTensor {
                 })
                 .context("Only one predecessor found for Add node during backpropagation"),
                 TensorPredecessor::Two { left, right } => {
-                    left.lock().unwrap().grad += &self.grad;
-                    right.lock().unwrap().grad += &self.grad;
+                    let mut left_locked = left.lock().unwrap();
+                    let mut right_locked = right.lock().unwrap();
+                    let left_shape = left_locked.value.shape();
+                    let right_shape = right_locked.value.shape();
+
+                    left_locked.grad = &left_locked.grad
+                        + InnerTensor::unbroadcast(self.grad.clone(), left_shape)?;
+                    right_locked.grad = &right_locked.grad
+                        + InnerTensor::unbroadcast(self.grad.clone(), right_shape)?;
                     Ok(())
                 }
             },
@@ -428,8 +435,23 @@ impl InnerTensor {
                 TensorPredecessor::Two { left, right } => {
                     // NOTE: This currently creates a copy before updating
                     let mut left_inner = left.lock().unwrap();
-                    let right_inner = right.lock().unwrap();
-                    left_inner.grad = &left_inner.grad + &right_inner.grad * &self.grad;
+                    let mut right_inner = right.lock().unwrap();
+                    left_inner.grad = &left_inner.grad
+                        + InnerTensor::unbroadcast(
+                            &right_inner.value * &self.grad,
+                            left_inner.grad.shape(),
+                        )
+                        .context(
+                            "Failed to perform backpropogation for element-wise multiplication",
+                        )?;
+                    right_inner.grad = &right_inner.grad
+                        + InnerTensor::unbroadcast(
+                            &left_inner.value * &self.grad,
+                            right_inner.grad.shape(),
+                        )
+                        .context(
+                            "Failed to perform backpropagation for element-wise multiplication",
+                        )?;
                     Ok(())
                 }
                 _ => Err(TensorError::PredecessorMismatch {
@@ -459,6 +481,26 @@ impl InnerTensor {
             }
             _ => todo!(),
         }
+    }
+
+    /// Sum along axis to convert Tensor into desired shape
+    fn unbroadcast(tensor: ArrayD<f64>, to_shape: &[usize]) -> Result<ArrayD<f64>> {
+        let mut tensor = tensor;
+        // While the Tensor has extra dimensions, sum along the first
+        while tensor.shape().len() > to_shape.len() {
+            tensor = tensor.sum_axis(Axis(0));
+        }
+        let tensor_shape = tensor.shape().to_vec();
+        // For each remaining dimension, if the dimension in the to_shape is 1
+        // sum along it
+        for (axis, (tensor_size, to_size)) in tensor_shape.iter().zip(to_shape).enumerate() {
+            if (to_size == &1usize) && (tensor_size != &1usize) {
+                tensor = tensor.sum_axis(Axis(axis)); // Sum along the axis
+                tensor.insert_axis_inplace(Axis(axis)); // Add back an axis of length 1 at correct location
+            }
+        }
+
+        Ok(tensor)
     }
 }
 
@@ -619,7 +661,7 @@ enum TensorPredecessor {
 
 /// Enum describing the operation that created a tensor
 #[derive(Debug, Clone)]
-enum Operation {
+pub enum Operation {
     // Creation
     /// Tensor created
     Created,
@@ -680,6 +722,8 @@ pub enum TensorError {
     DimensionMismatch { operation: Operation },
     #[error("Incorrect number of predecessor Tensors for operation: {operation:?}")]
     PredecessorMismatch { operation: Operation },
+    #[error("Unable to unbroadcast Tensor")]
+    UnbroadcastFailure,
 }
 
 #[cfg(test)]
