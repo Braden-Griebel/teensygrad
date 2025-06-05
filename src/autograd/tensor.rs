@@ -1,11 +1,10 @@
 // Standard Library Use statements
-use std::cell::RefCell;
 use std::fmt;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 // External Crate Uses
 use anyhow::{Context, Result};
-use ndarray::{ArrayD, ArrayViewD, Axis, Zip};
+use ndarray::{ArrayD, Axis, Zip};
 use ndarray_rand::rand_distr::{Distribution, Normal, Uniform};
 use ndarray_rand::RandomExt;
 use thiserror;
@@ -13,14 +12,14 @@ use thiserror;
 /// A wrapped tensor, which will track computations
 /// enabling automatic differentiation
 pub struct Tensor {
-    inner: Rc<RefCell<InnerTensor>>,
+    inner: Arc<Mutex<InnerTensor>>,
 }
 
 // Implements the representation for the Tensor
 // (Just uses the display method of the underlying ndarray)
 impl fmt::Display for Tensor {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.inner.borrow().value)
+        write!(f, "{}", self.inner.lock().unwrap().value)
     }
 }
 
@@ -29,7 +28,7 @@ impl Tensor {
     /// Create a new Tensor with shape `shape`, filled with zeros
     fn new_zeros(shape: &[usize]) -> Result<Self> {
         Ok(Self {
-            inner: Rc::new(RefCell::new(
+            inner: Arc::new(Mutex::new(
                 InnerTensor::new_zeros(shape).context("Failed to create inner tensor")?,
             )),
         })
@@ -38,7 +37,7 @@ impl Tensor {
     /// Create a new Tensor with shape `shape`, filled with ones
     fn new_ones(shape: &[usize]) -> Result<Self> {
         Ok(Self {
-            inner: Rc::new(RefCell::new(
+            inner: Arc::new(Mutex::new(
                 InnerTensor::new_ones(shape).context("Failed to create inner tensor")?,
             )),
         })
@@ -46,7 +45,7 @@ impl Tensor {
     /// Create a new Tensor with shape `shape`, filled with `elem`
     fn new_from_elem(shape: &[usize], elem: f64) -> Result<Self> {
         Ok(Self {
-            inner: Rc::new(RefCell::new(
+            inner: Arc::new(Mutex::new(
                 InnerTensor::new_from_elem(shape, elem)
                     .context("Failed to initialize an inner tensor with elem")?,
             )),
@@ -57,7 +56,7 @@ impl Tensor {
     /// values sampled from a uniform distribution between 0 and 1
     fn new_rand(shape: &[usize]) -> Result<Self> {
         Ok(Self {
-            inner: Rc::new(RefCell::new(
+            inner: Arc::new(Mutex::new(
                 InnerTensor::new_rand(shape)
                     .context("Failed to create inner tensor with uniform random values")?,
             )),
@@ -69,7 +68,7 @@ impl Tensor {
     /// standard deviation 1
     fn new_rand_norm(shape: &[usize]) -> Result<Self> {
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor::new_rand_norm(shape).context(
+            inner: Arc::new(Mutex::new(InnerTensor::new_rand_norm(shape).context(
                 "Failed to create inner tensor with values from normal distribution",
             )?)),
         })
@@ -81,44 +80,44 @@ impl Tensor {
     // Passthrough functions for the Value
     /// Determine the number of dimensions the Tensor has
     fn ndim(&self) -> usize {
-        self.inner.borrow().ndim()
+        self.inner.lock().unwrap().ndim()
     }
 
     /// Determine the number of elements the Tensor has
     fn len(&self) -> usize {
-        self.inner.borrow().len()
+        self.inner.lock().unwrap().len()
     }
 
     /// Determine the shape of the Tensor
     fn shape(&self) -> Vec<usize> {
-        self.inner.borrow().shape().to_owned()
+        self.inner.lock().unwrap().shape().to_owned()
     }
 
     /// Determine whether the Tensor has any elements
     fn is_empty(&self) -> bool {
-        self.inner.borrow().is_empty()
+        self.inner.lock().unwrap().is_empty()
     }
 
     // Passthrough functions for the grad
 
     /// Determine the number of dimensions the gradient array has
     fn grad_ndim(&self) -> usize {
-        self.inner.borrow().grad_ndim()
+        self.inner.lock().unwrap().grad_ndim()
     }
 
     /// Determine the number of elements the gradient array has
     fn grad_len(&self) -> usize {
-        self.inner.borrow().grad_len()
+        self.inner.lock().unwrap().grad_len()
     }
 
     /// Determine the shape of the gradient array
     fn grad_shape(&self) -> Vec<usize> {
-        self.inner.borrow().grad_shape().to_owned()
+        self.inner.lock().unwrap().grad_shape().to_owned()
     }
 
     /// Determine whether the grad has any elements
     fn grad_is_empty(&self) -> bool {
-        self.inner.borrow().grad_is_empty()
+        self.inner.lock().unwrap().grad_is_empty()
     }
 }
 
@@ -126,18 +125,18 @@ impl Tensor {
 impl Tensor {
     /// Set the value of the gradient for the Tensor to 0
     fn zero_grad(&mut self) {
-        self.inner.borrow_mut().zero_grad();
+        self.inner.lock().unwrap().zero_grad();
     }
 
     /// Get a copy of the value represented by the Tensor
     fn get_value_copy(&self) -> ArrayD<f64> {
-        let inner = self.inner.borrow();
+        let inner = self.inner.lock().unwrap();
         inner.value.clone()
     }
 
     /// Get a copy of the gradient represented by the Tensor
     fn get_grad_copy(&self) -> ArrayD<f64> {
-        let inner = self.inner.borrow();
+        let inner = self.inner.lock().unwrap();
         inner.grad.clone()
     }
 }
@@ -147,10 +146,10 @@ impl Tensor {
     // SECTION: Unary Operations
     /// Element-wise hyperbolic cosine
     fn cos(input: Tensor) -> Result<Self> {
-        let result = input.inner.borrow().value.map(|x| x.cos());
+        let result = input.inner.lock().unwrap().value.map(|x| x.cos());
         let result_shape: Vec<usize> = result.shape().to_vec();
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor {
+            inner: Arc::new(Mutex::new(InnerTensor {
                 op: Operation::Cos,
                 value: result,
                 grad: ArrayD::zeros(result_shape),
@@ -161,10 +160,10 @@ impl Tensor {
 
     /// Element-wise hyperbolic cosine
     fn cosh(input: Tensor) -> Result<Self> {
-        let result = input.inner.borrow().value.map(|x| x.cosh());
+        let result = input.inner.lock().unwrap().value.map(|x| x.cosh());
         let result_shape: Vec<usize> = result.shape().to_vec();
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor {
+            inner: Arc::new(Mutex::new(InnerTensor {
                 op: Operation::Cosh,
                 value: result,
                 grad: ArrayD::zeros(result_shape),
@@ -175,10 +174,10 @@ impl Tensor {
 
     /// Element-wise exponential base e
     fn exp(input: Tensor) -> Result<Self> {
-        let result = input.inner.borrow().value.map(|x| x.exp());
+        let result = input.inner.lock().unwrap().value.map(|x| x.exp());
         let result_shape: Vec<usize> = result.shape().to_vec();
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor {
+            inner: Arc::new(Mutex::new(InnerTensor {
                 op: Operation::Exp,
                 value: result,
                 grad: ArrayD::zeros(result_shape),
@@ -189,10 +188,10 @@ impl Tensor {
 
     /// Element-wise exponential with base `base`
     fn exp_base(input: Tensor, base: f64) -> Result<Self> {
-        let result = input.inner.borrow().value.map(|x| base.powf(*x));
+        let result = input.inner.lock().unwrap().value.map(|x| base.powf(*x));
         let result_shape: Vec<usize> = result.shape().to_vec();
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor {
+            inner: Arc::new(Mutex::new(InnerTensor {
                 op: Operation::ExpBase(base),
                 value: result,
                 grad: ArrayD::zeros(result_shape),
@@ -206,12 +205,13 @@ impl Tensor {
     fn heaviside(input: Tensor, location: f64) -> Result<Self> {
         let result = input
             .inner
-            .borrow()
+            .lock()
+            .unwrap()
             .value
             .map(|x| if *x < location { 0f64 } else { 1f64 });
         let result_shape: Vec<usize> = result.shape().to_vec();
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor {
+            inner: Arc::new(Mutex::new(InnerTensor {
                 op: Operation::Heaviside(location),
                 value: result,
                 grad: ArrayD::zeros(result_shape),
@@ -222,10 +222,10 @@ impl Tensor {
 
     /// Element-wise power of Tensor
     fn pow(input: Tensor, exponent: f64) -> Result<Self> {
-        let result = input.inner.borrow().value.map(|x| x.powf(exponent));
+        let result = input.inner.lock().unwrap().value.map(|x| x.powf(exponent));
         let result_shape: Vec<usize> = result.shape().to_vec();
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor {
+            inner: Arc::new(Mutex::new(InnerTensor {
                 op: Operation::Pow(exponent),
                 value: result,
                 grad: ArrayD::zeros(result_shape),
@@ -238,12 +238,13 @@ impl Tensor {
     fn relu(input: Tensor) -> Result<Self> {
         let result = input
             .inner
-            .borrow()
+            .lock()
+            .unwrap()
             .value
             .map(|x| if *x < 0f64 { 0f64 } else { *x });
         let result_shape: Vec<usize> = result.shape().to_vec();
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor {
+            inner: Arc::new(Mutex::new(InnerTensor {
                 op: Operation::Relu,
                 value: result,
                 grad: ArrayD::zeros(result_shape),
@@ -254,10 +255,10 @@ impl Tensor {
 
     /// Element-wise hyperbolic cosine
     fn sin(input: Tensor) -> Result<Self> {
-        let result = input.inner.borrow().value.map(|x| x.sin());
+        let result = input.inner.lock().unwrap().value.map(|x| x.sin());
         let result_shape: Vec<usize> = result.shape().to_vec();
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor {
+            inner: Arc::new(Mutex::new(InnerTensor {
                 op: Operation::Sin,
                 value: result,
                 grad: ArrayD::zeros(result_shape),
@@ -267,10 +268,10 @@ impl Tensor {
     }
     /// Element-wise hyperbolic cosine
     fn sinh(input: Tensor) -> Result<Self> {
-        let result = input.inner.borrow().value.map(|x| x.sinh());
+        let result = input.inner.lock().unwrap().value.map(|x| x.sinh());
         let result_shape: Vec<usize> = result.shape().to_vec();
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor {
+            inner: Arc::new(Mutex::new(InnerTensor {
                 op: Operation::Sinh,
                 value: result,
                 grad: ArrayD::zeros(result_shape),
@@ -281,13 +282,13 @@ impl Tensor {
 
     /// Split a Tensor along `axis`, at position `index`
     fn split(input: Self, axis: Axis, index: usize) -> Result<(Self, Self)> {
-        let inner_tensor = input.inner.borrow();
+        let inner_tensor = input.inner.lock().unwrap();
         let (left, right) = inner_tensor.value.view().split_at(axis, index);
         let left_shape = left.shape().to_vec();
         let right_shape = right.shape().to_vec();
         return Ok((
             Self {
-                inner: Rc::new(RefCell::new(InnerTensor {
+                inner: Arc::new(Mutex::new(InnerTensor {
                     value: left.clone().to_owned(),
                     grad: ArrayD::zeros(left_shape),
                     op: Operation::Split {
@@ -299,7 +300,7 @@ impl Tensor {
                 })),
             },
             Self {
-                inner: Rc::new(RefCell::new(InnerTensor {
+                inner: Arc::new(Mutex::new(InnerTensor {
                     value: right.clone().to_owned(),
                     grad: ArrayD::zeros(right_shape),
                     op: Operation::Split {
@@ -315,10 +316,10 @@ impl Tensor {
 
     /// Element-wise Tangent function
     fn tan(input: Tensor) -> Result<Self> {
-        let result = input.inner.borrow().value.map(|x| x.tan());
+        let result = input.inner.lock().unwrap().value.map(|x| x.tan());
         let result_shape: Vec<usize> = result.shape().to_vec();
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor {
+            inner: Arc::new(Mutex::new(InnerTensor {
                 op: Operation::Tan,
                 value: result,
                 grad: ArrayD::zeros(result_shape),
@@ -329,10 +330,10 @@ impl Tensor {
 
     /// Element-wise Hyperbolic Tangent function
     fn tanh(input: Tensor) -> Result<Self> {
-        let result = input.inner.borrow().value.map(|x| x.tanh());
+        let result = input.inner.lock().unwrap().value.map(|x| x.tanh());
         let result_shape: Vec<usize> = result.shape().to_vec();
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor {
+            inner: Arc::new(Mutex::new(InnerTensor {
                 op: Operation::Tanh,
                 value: result,
                 grad: ArrayD::zeros(result_shape),
@@ -344,10 +345,10 @@ impl Tensor {
     // SECTION: Binary Operations
     /// Element-wise addition of two Tensors
     fn add(left: Self, right: Self) -> Result<Self> {
-        let result = &left.inner.borrow().value + &right.inner.borrow().value;
+        let result = &left.inner.lock().unwrap().value + &right.inner.lock().unwrap().value;
         let result_shape: Vec<usize> = result.shape().to_vec();
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor {
+            inner: Arc::new(Mutex::new(InnerTensor {
                 op: Operation::Add,
                 value: result,
                 grad: ArrayD::zeros(result_shape),
@@ -361,10 +362,10 @@ impl Tensor {
 
     /// Element-wise multiplication of two Tensors
     fn mult(left: Self, right: Self) -> Result<Self> {
-        let result = &left.inner.borrow().value * &right.inner.borrow().value;
+        let result = &left.inner.lock().unwrap().value * &right.inner.lock().unwrap().value;
         let result_shape: Vec<usize> = result.shape().to_vec();
         Ok(Self {
-            inner: Rc::new(RefCell::new(InnerTensor {
+            inner: Arc::new(Mutex::new(InnerTensor {
                 op: Operation::Mult,
                 value: result,
                 grad: ArrayD::zeros(result_shape),
@@ -406,8 +407,8 @@ impl InnerTensor {
                 })
                 .context("Only one predecessor found for Add node during backpropagation"),
                 TensorPredecessor::Two { left, right } => {
-                    left.borrow_mut().grad += &self.grad;
-                    right.borrow_mut().grad += &self.grad;
+                    left.lock().unwrap().grad += &self.grad;
+                    right.lock().unwrap().grad += &self.grad;
                     Ok(())
                 }
             },
@@ -425,19 +426,10 @@ impl InnerTensor {
             }
             Operation::Mult => match &self.predecessors {
                 TensorPredecessor::Two { left, right } => {
-                    Zip::from(&mut left.borrow_mut().grad)
-                        .and(&right.borrow().value)
-                        .and(&self.grad)
-                        .for_each(|l, &r, &o| *l += r * o);
-                    Zip::from(&mut right.borrow_mut().grad)
-                        .and(&left.borrow().value)
-                        .and(&self.grad)
-                        .for_each(|r, &l, &o| *r += l * o);
-                    // NOTE: Previous implementation
-                    // left.borrow_mut().grad =
-                    //     &(right.borrow().value) * &self.grad + &(left.borrow().grad);
-                    // right.borrow_mut().grad =
-                    //     &(left.borrow().value) * &self.grad + &(right.borrow().grad);
+                    // NOTE: This currently creates a copy before updating
+                    let mut left_inner = left.lock().unwrap();
+                    let right_inner = right.lock().unwrap();
+                    left_inner.grad = &left_inner.grad + &right_inner.grad * &self.grad;
                     Ok(())
                 }
                 _ => Err(TensorError::PredecessorMismatch {
@@ -466,6 +458,16 @@ impl InnerTensor {
                 todo!()
             }
             _ => todo!(),
+        }
+    }
+}
+
+impl InnerTensor {
+    fn get_broadcast<'a>(left: &'a [usize], right: &'a [usize]) -> &'a [usize] {
+        if left.len() > right.len() {
+            left
+        } else {
+            right
         }
     }
 }
@@ -607,11 +609,11 @@ enum TensorPredecessor {
     /// If the Tensor has no predecessors (i.e. was directly created rather than from a calculation)
     None,
     /// If the Tensor was created by a unary operation
-    One(Rc<RefCell<InnerTensor>>),
+    One(Arc<Mutex<InnerTensor>>),
     /// If the Tensor was created by a Binary Operation
     Two {
-        left: Rc<RefCell<InnerTensor>>,
-        right: Rc<RefCell<InnerTensor>>,
+        left: Arc<Mutex<InnerTensor>>,
+        right: Arc<Mutex<InnerTensor>>,
     },
 }
 
